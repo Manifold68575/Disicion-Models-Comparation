@@ -1,0 +1,392 @@
+# DecisionBench：Jev / Qwen / BERT 统一 Infra & Harness 方案
+
+
+
+推荐：单机 GPU + 独立压测端
+
+目标：可复现实验与 Technical Report
+
+
+
+我建议你们把项目做成一个独立的开源系统，暂定名为 DecisionBench。
+
+目标不只是比较几个模型的 Accuracy，而是实现一个能够重复运行、扩展模型和数据集、计算真实部署成本的决策模型 Benchmark Framework。
+
+第一版不建议引入 Kubernetes、Ray、Kafka 或 ClickHouse。 对于你们两个人、一张租赁 RTX 4090 的资源规模，Docker Compose + Python AsyncIO + Parquet + Prometheus 已经足够。只有当单机结果不能解释实际系统行为时，再考虑多机部署。
+
+## 一、整体系统架构
+
+Experiment Controller
+
+实验配置 · 数据集切分 · 模型与版本管理 · 运行调度
+
+Unified Benchmark Harness
+
+Quality Runner / Load Runner / Dynamic Runner
+
+Adapter · 计时 · 错误处理 · 标准结果协议
+
+Jev Adapter
+
+External API
+
+Qwen Adapter
+
+vLLM · RTX 4090
+
+BERT Adapter
+
+CPU / GPU Service
+
+Classic ML
+
+TF-IDF / BGE / SVM
+
+Results & Observability
+
+JSONL / Parquet
+
+Prometheus / Grafana
+
+Report Generator
+
+整套框架划分为三层：
+
+| 层级             | 职责                   | 推荐技术                              |
+| -------------- | -------------------- | --------------------------------- |
+| Control Plane  | 实验定义、版本控制、参数编排       | Python、YAML、Git                   |
+| Data Plane     | 模型 Serving、请求生成、在线压测 | FastAPI、vLLM、AsyncIO、HTTPX        |
+| Analysis Plane | 指标聚合、成本计算、可视化        | Pandas、Parquet、Prometheus、Grafana |
+
+有一个设计原则必须始终遵守：
+
+同一个 Benchmark 允许不同模型使用各自适合的推理引擎，但必须共享同一个数据集协议、测量协议、SLO 定义和成本核算口径。
+
+## 二、实际 Infra 部署拓扑
+
+建议按物理资源分为三部分：
+
+| 节点         | 部署内容                  | 作用             |
+| ---------- | --------------------- | -------------- |
+| Controller | Harness、数据集、分析脚本、结果目录 | 运行实验、产生负载、分析结果 |
+| GPU Worker | Qwen/vLLM、BERT GPU    | 被测模型服务         |
+| CPU Worker | BERT CPU、TF-IDF、BGE   | CPU 推理对照       |
+
+初期 Controller 可以是你的 MacBook 或独立 CPU 云主机，GPU Worker 使用租赁的 4090。CPU Worker 初期也可以与 GPU Worker 共用 CPU，但正式测 CPU 推理成本时，需要单独计量整台实例的成本，或者使用独立 CPU 机器复测。
+
+不要同时在同一张 4090 上运行 BERT GPU 和 Qwen/vLLM 做正式性能测试。 它们会竞争显存、计算和内存带宽，导致结果失真。
+
+推荐部署顺序：
+
+1. 启动 Qwen/vLLM，只测 Qwen。
+2. 停止 vLLM，启动 BERT GPU，只测 BERT GPU。
+3. 单独启动 BERT CPU，测 CPU 推理。
+4. Jev 使用 Controller 通过外网 API 测试，并单独记录网络影响。
+5. 需要验证生产环境整体链路时，再进行跨节点端到端测试。
+
+同一个 GPU Worker 上不同模型的结果，应尽可能保持一致的驱动版本、GPU 功率策略、机器负载和测试时间窗口。
+
+## 三、统一 Harness 必须支持的四种实验模式
+
+| Runner    | 输入方式        | 主要目标               |
+| --------- | ----------- | ------------------ |
+| `quality` | 固定测试集、低并发   | Accuracy、F1、拒识率    |
+| `load`    | 控制到达率的在线请求流 | p95、p99、吞吐、Goodput |
+| `dynamic` | 按时间顺序改变工具配置 | 更新成本、精度恢复、旧类退化     |
+| `cost`    | 读取请求与资源计量数据 | 单位成本、月度 TCO、盈亏平衡   |
+
+这四种模式要互相独立。尤其不要为了省事，用一次最大吞吐压测的结果直接计算模型准确率：高负载下的超时、解析错误和容量问题，应该与模型原本的语义分类能力分别记录。
+
+## 四、我已经做了一份可运行的 Starter
+
+DecisionBench Starter v0.1
+
+Python · Docker Compose · AsyncIO · HTTPX · FastAPI
+
+6 项自测通过
+
+38 个文件
+
+已实现统一 Adapter、质量评测、开放环负载测试、基础成本核算、实验 Manifest 和结果导出。包含 Jev、Qwen/vLLM、BERT、TF-IDF 的接入代码与训练脚本。
+
+&#x20;下载项目源码 ZIP
+
+查看完整 README 与运行说明
+
+目前验证的是 Mock Harness 与 Adapter 的模拟响应解析。真实 Jev API、4090 vLLM、BERT 模型训练及 Docker 部署尚未在实际环境中端到端验证；压缩包不包含真实模型性能数据。
+
+主要目录如下：
+
+```
+decisionbench_starter/
+├── decisionbench/
+│   ├── adapters.py       # 统一模型调用接口
+│   ├── runners.py        # Quality / Load Runner
+│   ├── metrics.py        # 指标与成本核算
+│   ├── datasets.py       # 数据集协议
+│   └── cli.py            # 实验入口
+├── services/
+│   ├── bert_server.py
+│   ├── classic_server.py
+│   ├── train_bert.py
+│   └── train_classic.py
+├── configs/              # 各模型实验配置
+├── infra/                # Prometheus
+├── scripts/              # 数据准备、月度TCO等
+├── docs/                 # 实验协议与开发计划
+├── tests/                # Harness自测
+└── docker-compose.yaml
+```
+
+## 五、统一数据和结果协议
+
+对于你们这个项目，我建议所有输入归一化为：
+
+```
+
+{
+  "sample_id": "massive-test-000001",
+  "text": "Set an alarm for tomorrow",
+  "label": "alarm_set"
+}
+
+```
+
+候选类别不应该在每个样本里反复复制，而应该放到冻结版本的 `catalog.json` 里。
+
+```
+{
+  "version": "v1",
+  "labels": {
+    "alarm_set": "Create an alarm",
+    "alarm_cancel": "Cancel an alarm",
+    "weather_query": "Ask about weather"
+  }
+}
+```
+
+这样模型之间共用相同的类别定义，也方便后面模拟工具更新。
+
+Adapter 则统一为：
+
+```
+class BaseAdapter:    async def predict(self, sample, catalog):        """Return a Decision object."""        raise NotImplementedError
+```
+
+不同推理引擎返回相同的字段，例如预测标签、概率（如适用）、模型版本以及 Token 使用量。
+
+这里有三个特别重要的设计细节：
+
+- `scores` 和 `confidence` 不能混为一谈：Jev 原生返回概率与置信度，而 BERT Softmax、Embedding Similarity 未必经过校准。
+- `request_id` 与 `sample_id` 必须分开：压测期间同一条数据可能被重复发送几百次。
+- 失败、超时和不合法输出必须保留下来：不能通过丢弃错误请求抬高性能指标。
+
+## 六、真正的性能 Harness 怎么运行
+
+### Quality Runner
+
+固定测试数据，不对服务施加明显的并发压力，主要回答模型的语义质量问题。
+
+对每个模型：
+
+- MASSIVE：完整测试集
+- BANKING77：完整测试集
+- CLINC150：已知意图与 OOS 分开统计
+
+### Load Runner
+
+使用 Open-loop Offered Load。
+
+也就是说，Harness 根据设定的时间表发送请求，不等待上一个请求结束才决定什么时候发送下一个。
+
+例如：
+
+不同请求负载下的 p95 延迟（仅示意）
+
+示意性虚构数据，用于展示横轴 Offered RPS 与纵轴 p95 E2E Latency 的关系，不是实际模型测试结果。
+
+BERT CPUQwen/vLLM
+
+0150300450600148163264
+
+当负载高于处理能力时，如果使用 Closed-loop，很容易因为客户端等待而低估队列延迟。
+
+Open-loop 的价值是能够观察请求积压、超时和服务退化，而不是只得到一个漂亮的最大吞吐数。
+
+具体测试建议：
+
+| 参数          | 初始范围                         |
+| ----------- | ---------------------------- |
+| Offered RPS | 1 / 2 / 4 / 8 / 16 / 32，继续扩展 |
+| 最大并发        | 1 / 4 / 16 / 32 / 64         |
+| SLO         | 100 / 200 / 500ms 分组         |
+| Warmup      | 50–200 次                     |
+| 初步测试        | 每配置约 120 秒                   |
+| 正式结果        | 稳态时间更长、重复 3–5 轮              |
+
+vLLM 的原生 `vllm bench serve` 也支持请求速率、并发限制、Goodput SLO 和 E2E 延迟分位数，可以作为 Qwen 单模型性能结果的交叉校验。
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.vllm.ai\&sz=32)
+
+vLLM
+
+
+
+最终确定最大有效容量时，不能只选择 Goodput 最高的一行，而要同时满足模型质量、成功率与 p95 SLO。
+
+## 七、成本要在 Harness 之外建立容量模型
+
+推荐三个输出层次：
+
+| 层次             | 计算方式                | 用途       |
+| -------------- | ------------------- | -------- |
+| Request Cost   | GPU/CPU 实例计费与成功请求数量 | 比较运行成本   |
+| SLO-Valid Cost | 实例计费与符合延迟的成功请求数量    | 比较有效计算成本 |
+| Monthly TCO    | 实例副本、峰值流量、空闲时间、训练维护 | 真实系统选型   |
+
+对于 CPU/GPU 实例：
+
+\\[ C\_{\text{1M}}=\frac{10^6 P\_{\text{hour}}}{3600G} \\]
+
+其中 \\(G\\) 是在目标 SLO 下测得的可持续 Goodput QPS。
+
+但最终要以月度业务流量和峰值容量确定部署实例数。
+
+对于 Jev，则采用官方请求返回的 `usage.input_tokens` 与实际 API 价格核算。目前官方公开的 Jev 1.13 价格为每百万输入 tokens 0.042 美元，输出免费，常规限流参考为 80 RPS 和 100K tokens/s，且官方说明可能动态调整。
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.typesafe.ai\&sz=32)
+
+TypeSafe AI
+
+
+
+Starter 中已包含：
+
+```
+python scripts/monthly_tco.py \
+  --monthly-requests 1000000 \
+  --peak-rps 5 \
+  --max-slo-qps 20 \
+  --instance-price-per-hour 5
+```
+
+上面 `5 元/小时` 是演示值。真实报告需要填写实际租赁账单，并将不同货币按同一个汇率时间点换算。
+
+## 八、如何开始运行这个项目
+
+解压源码后，在项目目录里运行：
+
+```
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -e '.[dev]'
+
+# 先验证 Harness
+pytest -q
+
+# 运行不需要GPU和API的自测
+python -m decisionbench.cli run \
+  -c configs/smoke-quality.yaml
+
+python -m decisionbench.cli run \
+  -c configs/smoke-load.yaml
+
+```
+
+自测通过后，下载并处理真实数据：
+
+```
+
+pip install -e '.[data]'
+
+python scripts/prepare_datasets.py \
+  --name massive \
+  --out data/normalized/massive
+
+python scripts/prepare_datasets.py \
+  --name banking77 \
+  --out data/normalized/banking77
+
+```
+
+然后在 GPU Worker 上启动 vLLM：
+
+```
+
+docker compose --profile qwen up -d qwen
+
+curl http://127.0.0.1:8000/v1/models
+
+```
+
+最后运行对应实验：
+
+```
+python -m decisionbench.cli run \
+  -c configs/qwen-quality.yaml
+
+python -m decisionbench.cli run \
+  -c configs/qwen-load.yaml
+```
+
+每次实验都会保存：
+
+`manifest.json` — 配置、环境、数据和代码哈希。
+
+`requests.jsonl` — 每次请求的预测、延迟、错误和 Token 使用量。
+
+`summary.json` — 质量、吞吐、Goodput 和基础成本。
+
+最终调用 `scripts/aggregate.py` 汇总各次实验。vLLM 的 `/metrics` 可提供排队、Prefill、Decode 和 Token 等服务内部指标，适合与 Harness 的客户端 E2E 指标互补。
+
+[image](https://www.google.com/s2/favicons?domain=https://docs.vllm.ai\&sz=32)
+
+vLLM
+
+
+
+## 九、14 天开发与实验验收
+
+| 时间        | 优先任务                     | 验收结果                |
+| --------- | ------------------------ | ------------------- |
+| Day 1–2   | Harness 自测、真实 Adapter 接通 | 四种模型均能返回合法类别        |
+| Day 3–4   | MASSIVE 数据集、BERT 微调      | 质量实验跑通并复现           |
+| Day 5–6   | Qwen/Jev/BERT 质量比较       | Accuracy、F1、错误分析    |
+| Day 7–9   | CPU/GPU/API 性能测试         | p50/p95/p99、Goodput |
+| Day 10–11 | 成本与缓存消融                  | Cost/1M、月度 TCO      |
+| Day 12–13 | 新增工具、更新类别                | 演化实验及维护成本           |
+| Day 14    | 汇总、复测、报告                 | Technical Report v1 |
+
+对于两人分工，你主要负责 Infra、Harness、Serving、性能与成本建模，对方负责 Jev Adapter、数据集整理、类别定义和语义错误分析。BERT 训练与最终数据分析可以共同完成。
+
+这里尤其需要区分：压缩包的 P0 代码已经能够运行基础质量和负载流程；BGE、BERT INT8、校准拒识和研究级动态更新测试仍属于 P1/P2 待开发项，已在 `docs/IMPLEMENTATION_BACKLOG.md` 中列出。
+
+## 十、我建议的第一个正式 Checkpoint
+
+不要第一天同时启动 7 个模型、3 个数据集和 Grafana。
+
+第一轮正式 Checkpoint 只要求：
+
+Checkpoint 1：MASSIVE 三模型质量与成本基线
+
+完成下面五个条件，即可进入并发与动态实验。
+
+Jev、Qwen3-0.6B 和 BERT 都能完成同一批 300 条验证请求
+
+三个模型使用冻结、等价的候选类别说明
+
+每条请求都保存预测、状态、耗时和 Token 信息（若接口提供）
+
+模型的 Accuracy、Macro-F1 能独立复算
+
+一次实验可通过固定配置与版本重新执行
+
+0 / 5 项通过
+
+完成这个 Checkpoint 后，才值得开始大量跑 RPS、Prefix Cache、BERT CPU/GPU 成本和 Jev API 计费对照。
+
+这套系统长期最值得建设的资产不是某次 Jev 跑分，而是一个真正可复用的 Decision Model Evaluation Harness。 只要抽象设计正确，以后你要增加新的专用决策模型、Embedding Router、Agent Tool Selector，甚至自研模型，都只需新增 Adapter，而不用重写整套实验和成本框架。
+
+它也能把你们现在的一次技术讨论，转化为一个有开源价值、工程复用价值和潜在学术研究价值的独立项目。

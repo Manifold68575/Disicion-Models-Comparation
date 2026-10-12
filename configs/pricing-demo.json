@@ -1,0 +1,6 @@
+{
+  "billing": "instance",
+  "currency": "USD",
+  "instance_price_per_hour": 1,
+  "price_source": "synthetic example; replace with actual invoice and date"
+}

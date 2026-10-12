@@ -1,0 +1,15 @@
+name: massive-qwen-quality
+mode: quality
+dataset: data/normalized/massive/checkpoint-300.jsonl
+catalog: data/normalized/massive/catalog.json
+adapter:
+  kind: qwen
+  base_url: http://127.0.0.1:8000
+  model: Qwen/Qwen3-0.6B
+  max_tokens: 64
+warmup: 50
+slo_ms: 500
+environment:
+  worker_gpu: "TODO: GPU name, driver, power limit"
+  model_revision: "TODO: immutable model revision"
+  container_digest: "TODO: tested vLLM image digest"

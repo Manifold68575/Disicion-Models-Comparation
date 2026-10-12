@@ -1,0 +1,11 @@
+name: massive-bert-quality
+mode: quality
+dataset: data/normalized/massive/checkpoint-300.jsonl
+catalog: data/normalized/massive/catalog.json
+adapter:
+  kind: bert
+  base_url: http://127.0.0.1:8001
+warmup: 50
+slo_ms: 500
+environment:
+  device: "TODO: CPU or CUDA, instance SKU, thread count, artifact hash"

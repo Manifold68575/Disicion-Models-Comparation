@@ -1,0 +1,15 @@
+name: massive-jev-quality
+mode: quality
+dataset: data/normalized/massive/checkpoint-300.jsonl
+catalog: data/normalized/massive/catalog.json
+adapter:
+  kind: jev
+  base_url: https://api.typesafe.ai
+  model: jev-1.13.0
+  api_key_env: TYPESAFE_API_KEY
+warmup: 5
+slo_ms: 500
+timeout_s: 30
+environment:
+  network_path: "TODO: Controller region / API network path"
+# Add cost only after confirming actual API prices and billing currency.

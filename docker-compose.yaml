@@ -1,0 +1,75 @@
+services:
+  qwen:
+    profiles: [qwen]
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.9.2}
+    ipc: host
+    ports: ["127.0.0.1:8000:8000"]
+    volumes: ["hf-cache:/root/.cache/huggingface"]
+    command:
+      - --model
+      - ${QWEN_MODEL:-Qwen/Qwen3-0.6B}
+      - --revision
+      - ${QWEN_REVISION:-main}
+      - --max-model-len
+      - "4096"
+      - --gpu-memory-utilization
+      - "0.90"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  bert-cpu:
+    profiles: [bert-cpu]
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.serve
+      args: {EXTRA: bert}
+    ports: ["127.0.0.1:8001:8001"]
+    volumes: ["${BERT_MODEL_PATH:-./models/bert}:/models/bert:ro"]
+    environment:
+      MODEL_PATH: /models/bert
+      DEVICE: cpu
+      TORCH_NUM_THREADS: "4"
+    command: [uvicorn, "services.bert_server:app", --host, "0.0.0.0", --port, "8001"]
+  bert-gpu:
+    profiles: [bert-gpu]
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.serve
+      args: {EXTRA: bert}
+    ports: ["127.0.0.1:8001:8001"]
+    volumes: ["${BERT_MODEL_PATH:-./models/bert}:/models/bert:ro"]
+    environment:
+      MODEL_PATH: /models/bert
+      DEVICE: cuda
+    command: [uvicorn, "services.bert_server:app", --host, "0.0.0.0", --port, "8001"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+  classic:
+    profiles: [classic]
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.serve
+      args: {EXTRA: classic}
+    ports: ["127.0.0.1:8002:8002"]
+    volumes: ["${CLASSIC_MODEL_PATH:-./models/classic}:/models/classic:ro"]
+    environment: {MODEL_PATH: /models/classic}
+    command: [uvicorn, "services.classic_server:app", --host, "0.0.0.0", --port, "8002"]
+  prometheus:
+    profiles: [observability]
+    image: prom/prometheus:v3.2.1
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./infra/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+volumes:
+  hf-cache:
+  prometheus-data:

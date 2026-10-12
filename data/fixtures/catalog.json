@@ -1,0 +1,8 @@
+{
+  "version": "smoke-v1",
+  "labels": {
+    "alarm_set": "Create an alarm",
+    "alarm_cancel": "Cancel an alarm",
+    "weather_query": "Ask about weather"
+  }
+}

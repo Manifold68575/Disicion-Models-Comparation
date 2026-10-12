@@ -1,0 +1,9 @@
+name: classic-fixture-quality
+mode: quality
+dataset: data/fixtures/test.jsonl
+catalog: data/fixtures/catalog.json
+adapter:
+  kind: classic
+  base_url: http://127.0.0.1:8002
+warmup: 2
+slo_ms: 500

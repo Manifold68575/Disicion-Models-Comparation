@@ -1,0 +1,13 @@
+name: smoke-load
+mode: load
+dataset: data/fixtures/test.jsonl
+catalog: data/fixtures/catalog.json
+adapter:
+  kind: mock
+  delay_ms: 10
+offered_rps: 20
+duration_s: 2
+max_concurrency: 4
+slo_ms: 100
+timeout_s: 1
+warmup: 2

@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+scrape_configs:
+  - job_name: qwen
+    static_configs:
+      - targets: [qwen:8000]
+  - job_name: bert-cpu
+    static_configs:
+      - targets: [bert-cpu:8001]
+  - job_name: bert-gpu
+    static_configs:
+      - targets: [bert-gpu:8001]
+  - job_name: classic
+    static_configs:
+      - targets: [classic:8002]

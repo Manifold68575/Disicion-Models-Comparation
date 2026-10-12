@@ -1,0 +1,6 @@
+{"sample_id":"smoke-train-1","text":"Set an alarm at seven","label":"alarm_set"}
+{"sample_id":"smoke-train-2","text":"Make a new alarm","label":"alarm_set"}
+{"sample_id":"smoke-train-3","text":"Cancel all alarms please","label":"alarm_cancel"}
+{"sample_id":"smoke-train-4","text":"Cancel the alarm for tonight","label":"alarm_cancel"}
+{"sample_id":"smoke-train-5","text":"Show weather forecast","label":"weather_query"}
+{"sample_id":"smoke-train-6","text":"Check the weather outside","label":"weather_query"}

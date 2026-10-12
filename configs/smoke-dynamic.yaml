@@ -1,0 +1,14 @@
+name: smoke-dynamic
+mode: dynamic
+dataset: data/fixtures/test.jsonl
+catalog: data/fixtures/catalog.json
+adapter:
+  kind: mock
+duration_s: 2
+offered_rps: 10
+max_concurrency: 4
+stages:
+  - at_s: 0
+    catalog: data/fixtures/catalog.json
+  - at_s: 1
+    catalog: data/fixtures/catalog-v2.json

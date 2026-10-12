@@ -1,0 +1,15 @@
+name: smoke-quality
+mode: quality
+dataset: data/fixtures/test.jsonl
+catalog: data/fixtures/catalog.json
+adapter:
+  kind: mock
+  delay_ms: 5
+slo_ms: 100
+timeout_s: 1
+warmup: 2
+cost:
+  billing: instance
+  currency: USD
+  instance_price_per_hour: 1
+  price_source: synthetic demo only

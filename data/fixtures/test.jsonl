@@ -1,0 +1,6 @@
+{"sample_id":"smoke-test-1","text":"Set an alarm for tomorrow","label":"alarm_set"}
+{"sample_id":"smoke-test-2","text":"Create an alarm at eight","label":"alarm_set"}
+{"sample_id":"smoke-test-3","text":"Cancel my alarm","label":"alarm_cancel"}
+{"sample_id":"smoke-test-4","text":"Cancel the morning alarm","label":"alarm_cancel"}
+{"sample_id":"smoke-test-5","text":"What is the weather tomorrow?","label":"weather_query"}
+{"sample_id":"smoke-test-6","text":"Tell me today's weather","label":"weather_query"}
